@@ -1,74 +1,26 @@
-enc_client_key*
-*.pyc
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Distribution / Packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual Environments
-venv/
-env/
-ENV/
+# Environments
 .env
 .venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
-# Unit Test / Coverage
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
-
-# MyPy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# ENC specific (if any local artifacts are generated inside)
-# We assume ~/.enc is outside, but if user copies anything:
+# Project
 .enc/
-config.json
-*__pycache__/*
+*.enc
+*.log
 
-# Keys and Secrets
-*.pub
-*.key
-*.pem
+# SSH Keys (Critical)
+ssh/host_keys/
+ssh/*.key
+ssh/*.pub
 id_rsa
 id_rsa.pub
-authorized_keys
-enc-server/ssh/
-!enc-server/ssh/generate_ssh_key.md
-users.db
-*.sqlite
-*.db
-tests/test_project/ssh_key
-docs/_build/
