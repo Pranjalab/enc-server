@@ -1,0 +1,26 @@
+services:
+  ssh-server:
+    build:
+      context: ..
+      dockerfile: enc-server/Dockerfile
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    devices:
+      - /dev/fuse:/dev/fuse
+    container_name: enc_ssh_server
+    ports:
+      - "2222:22"
+    environment:
+      - ADMIN_PASSWORD=secure_admin_pass
+    volumes:
+      - ./ssh/authorized_keys:/home/admin/.ssh/authorized_keys
+      - ./ssh/host_keys:/etc/ssh/ssh_host_keys
+#       - enc_data:/home
+#       - enc_config:/etc/enc
+
+# volumes:
+#   enc_data:
+#   enc_config:

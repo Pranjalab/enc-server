@@ -1,0 +1,15 @@
+{
+    "allow_all": [
+        "status",
+        "logout"
+    ],
+    "users": {
+        "admin": {
+            "role": "admin",
+            "permissions": [
+                "*"
+            ],
+            "projects": {}
+        }
+    }
+}
