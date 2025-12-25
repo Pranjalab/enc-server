@@ -1,5 +1,9 @@
 # ENC Server Documentation
 
+> **Part of the [ENC Ecosystem](https://github.com/Pranjalab/enc)**
+>
+> 📚 **[Read the Full Documentation](https://pranjalab.github.io/enc)**
+
 The **ENC Server** is the hardened core of the ecosystem. It provides the secure execution environment, project storage, and SSH access control.
 
 ## 🏗️ Architecture
