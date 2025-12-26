@@ -4,6 +4,9 @@
 >
 > 📚 **[Read the Full Documentation](https://pranjalab.github.io/enc)**
 > [![Docker Hub](https://img.shields.io/badge/docker-enc--server-blue?logo=docker)](https://hub.docker.com/r/pranjalab/enc-server)
+> [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+> [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+> [![Platform](https://img.shields.io/badge/platform-linux-lightgrey)](https://github.com/Pranjalab/enc)
 
 The **ENC Server** is the hardened core of the ecosystem. It provides the secure execution environment, project storage, and SSH access control.
 
