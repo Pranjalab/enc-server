@@ -1,6 +1,6 @@
 # Stage 1: Builder
-# Pinning to specific golang version on alpine 3.20 for stability (matching runtime)
-FROM golang:1.23-alpine3.20 AS builder
+# Pinning to specific golang version for stability and security (x/crypto requires 1.24+)
+FROM golang:1.24-alpine3.21 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git bash openssl-dev gcc musl-dev
@@ -13,8 +13,8 @@ RUN git clone https://github.com/rfjakob/gocryptfs.git . && \
     go build -tags openssl -o gocryptfs .
 
 # Stage 2: Runtime
-# Pinning to alpine 3.20 for predictable security updates
-FROM alpine:3.20
+# Pinning to alpine 3.21 for predictable security updates
+FROM alpine:3.21
 
 # Install runtime dependencies
 # exclude gocryptfs package as we copy our own
