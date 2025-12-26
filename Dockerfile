@@ -55,23 +55,21 @@ RUN addgroup enc && \
 
 # Install ENC tool (from server source)
 WORKDIR /app
-# Copy the entire server directory to /app
-COPY enc-server/ /app/
-ENV BUILD_DATE=20241226_HARDENED
+# Copy the current directory to /app
+COPY . /app/
+ENV BUILD_DATE=20241226_STANDALONE
 RUN pip install . --break-system-packages
 
-# Copy Restricted Shell (now in src)
-# shell.py location is at /app/src/enc_server/shell.py
-# But we copy it to bin for easy access as simple script
-COPY enc-server/src/enc_server/shell.py /usr/local/bin/enc-shell
-COPY enc-server/config/policy.json /etc/enc/policy.json
+# Copy Restricted Shell
+COPY src/enc_server/shell.py /usr/local/bin/enc-shell
+COPY config/policy.json /etc/enc/policy.json
 RUN chmod +x /usr/local/bin/enc-shell && \
     chown root:enc /etc/enc/policy.json && \
     chmod 664 /etc/enc/policy.json
 ENV ENC_MODE=SERVER
 
 # Setup Entrypoint
-COPY enc-server/scripts/entrypoint.sh /entrypoint.sh
+COPY scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 22

@@ -3,8 +3,16 @@
 > **Part of the [ENC Ecosystem](https://github.com/Pranjalab/enc)**
 >
 > 📚 **[Read the Full Documentation](https://pranjalab.github.io/enc)**
+> [![Docker Hub](https://img.shields.io/badge/docker-enc--server-blue?logo=docker)](https://hub.docker.com/r/pranjalab/enc-server)
 
 The **ENC Server** is the hardened core of the ecosystem. It provides the secure execution environment, project storage, and SSH access control.
+
+## 🚀 Quick Start (Docker Hub)
+Pull and run the pre-built hardened server image instantly:
+```bash
+docker pull pranjalab/enc-server:latest
+docker run -p 2222:22 --cap-add SYS_ADMIN --device /dev/fuse pranjalab/enc-server:latest
+```
 
 ## 🏗️ Architecture
 
