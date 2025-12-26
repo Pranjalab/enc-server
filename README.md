@@ -12,9 +12,20 @@ The **ENC Server** is the hardened core of the ecosystem. It provides the secure
 
 ## 🚀 Quick Start (Docker Hub)
 Pull and run the pre-built hardened server image instantly:
+
+**Option 1: Docker Hub**
 ```bash
 docker pull pranjalab/enc-server:latest
-docker run -p 2222:22 --cap-add SYS_ADMIN --device /dev/fuse pranjalab/enc-server:latest
+```
+
+**Option 2: GitHub Container Registry (GHCR)**
+```bash
+docker pull ghcr.io/pranjalab/enc-server:latest
+```
+
+**Run Command:**
+```bash
+docker run -p 2222:22 --cap-add SYS_ADMIN --device /dev/fuse ghcr.io/pranjalab/enc-server:latest
 ```
 
 ## 🏗️ Architecture
