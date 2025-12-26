@@ -1,8 +1,6 @@
 services:
   ssh-server:
-    build:
-      context: ..
-      dockerfile: enc-server/Dockerfile
+    image: pranjalab/enc-server:latest
     cap_add:
       - SYS_ADMIN # Required for FUSE
       - MKNOD # Required for creating /dev/fuse

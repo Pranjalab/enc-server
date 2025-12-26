@@ -45,13 +45,13 @@ The server creates a security boundary around your code:
 *   Docker & Docker Compose installed on the host machine.
 *   Port `2222` free on the host (or configurable in `docker-compose.yml`).
 
-### 1. Build and Launch
-Navigate to the `server` directory and start the container:
+### 1. Launch Server
+Navigate to the `enc-server` directory and start the system. The script will automatically pull the latest hardened image.
 
 ```bash
 cd enc-server
 ./deploy.sh
-# Or manually: docker compose up -d --build
+# Or manually: docker compose up -d
 ```
 
 ### 2. Verify Installation

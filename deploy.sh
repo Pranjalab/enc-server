@@ -15,9 +15,10 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# Build and Start
-echo "Building and starting ENC Server containers..."
-docker compose up -d --build
+# Pull and Start
+echo "Pulling latest image and starting ENC Server..."
+docker compose pull
+docker compose up -d
 
 # Verify
 if [ $? -eq 0 ]; then
