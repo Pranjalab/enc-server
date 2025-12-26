@@ -66,6 +66,7 @@ RUN pip install . --break-system-packages
 COPY src/enc_server/shell.py /usr/local/bin/enc-shell
 COPY config/policy.json /etc/enc/policy.json
 RUN chmod +x /usr/local/bin/enc-shell && \
+    echo "/usr/local/bin/enc-shell" >> /etc/shells && \
     chown root:enc /etc/enc/policy.json && \
     chmod 664 /etc/enc/policy.json
 ENV ENC_MODE=SERVER
