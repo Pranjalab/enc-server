@@ -7,6 +7,9 @@ if [ ! -e /dev/fuse ]; then
     mknod -m 666 /dev/fuse c 10 229
 fi
 
+# Ensure FUSE permissions (Crucial for non-root users)
+chmod 666 /dev/fuse
+
 # Ensure correct permissions for admin home (in case of volume mounts)
 chown -R admin /home/admin
 
