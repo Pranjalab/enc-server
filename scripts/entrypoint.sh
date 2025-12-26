@@ -23,6 +23,7 @@ chown -R admin:enc /home/admin/.ssh
 chmod 600 /home/admin/.ssh/environment || true
 
 # Provision host keys if missing in volume
+mkdir -p /etc/ssh/ssh_host_keys
 if [ ! -f /etc/ssh/ssh_host_keys/ssh_host_ed25519_key ]; then
     ssh-keygen -A
     cp /etc/ssh/ssh_host_*_key /etc/ssh/ssh_host_keys/

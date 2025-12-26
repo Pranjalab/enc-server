@@ -44,7 +44,8 @@ RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/
     echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config && \
     echo "ClientAliveCountMax 3" >> /etc/ssh/sshd_config && \
     echo "TCPKeepAlive yes" >> /etc/ssh/sshd_config && \
-    echo "PermitUserEnvironment yes" >> /etc/ssh/sshd_config
+    echo "PermitUserEnvironment yes" >> /etc/ssh/sshd_config && \
+    mkdir -p /etc/ssh/ssh_host_keys
 
 # Create enc group and admin user
 # Force secure shell for admin
