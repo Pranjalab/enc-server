@@ -19,8 +19,13 @@ venv.bak/
 *.log
 
 # SSH Keys (Critical)
-ssh/host_keys/
-ssh/*.key
-ssh/*.pub
+ssh/*
+!ssh/generate_ssh_key.md
 id_rsa
 id_rsa.pub
+src/enc_server.egg-info/dependency_links.txt
+src/enc_server.egg-info/entry_points.txt
+src/enc_server.egg-info/PKG-INFO
+src/enc_server.egg-info/requires.txt
+src/enc_server.egg-info/SOURCES.txt
+src/enc_server.egg-info/top_level.txt

@@ -21,7 +21,6 @@ RUN apk add --no-cache \
     openrc \
     python3 \
     py3-pip \
-    bash \
     sudo \
     fuse \
     rsync \
@@ -45,9 +44,10 @@ RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/
     echo "TCPKeepAlive yes" >> /etc/ssh/sshd_config
 
 # Create enc group and admin user
+# Force secure shell for admin
 RUN addgroup enc && \
-    adduser -D -s /bin/bash -G enc admin && \
-    echo "admin ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/admin && \
+    adduser -D -s /usr/local/bin/enc-shell -G enc admin && \
+    echo "admin ALL=(root) NOPASSWD: /usr/sbin/adduser, /usr/sbin/deluser, /usr/sbin/chpasswd, /bin/mkdir, /bin/chmod, /bin/chown, /usr/bin/tee, /bin/cp, /bin/grep, /usr/bin/find" > /etc/sudoers.d/admin && \
     chmod 0440 /etc/sudoers.d/admin
 
 # Install ENC tool (from server source)
