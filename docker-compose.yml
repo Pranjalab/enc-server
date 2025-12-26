@@ -11,6 +11,8 @@ services:
     devices:
       - /dev/fuse:/dev/fuse
     container_name: enc_ssh_server
+    restart: unless-stopped
+    init: true
     ports:
       - "2222:22"
     environment:
