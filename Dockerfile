@@ -1,5 +1,6 @@
 # Stage 1: Builder
-FROM golang:alpine AS builder
+# Pinning to specific golang version on alpine 3.20 for stability (matching runtime)
+FROM golang:1.23-alpine3.20 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git bash openssl-dev gcc musl-dev
@@ -12,7 +13,8 @@ RUN git clone https://github.com/rfjakob/gocryptfs.git . && \
     go build -tags openssl -o gocryptfs .
 
 # Stage 2: Runtime
-FROM alpine:latest
+# Pinning to alpine 3.20 for predictable security updates
+FROM alpine:3.20
 
 # Install runtime dependencies
 # exclude gocryptfs package as we copy our own
@@ -54,9 +56,8 @@ RUN addgroup enc && \
 # Install ENC tool (from server source)
 WORKDIR /app
 # Copy the entire server directory to /app
-# Copy the entire server directory to /app
 COPY enc-server/ /app/
-ENV BUILD_DATE=20241216_MIGRATION
+ENV BUILD_DATE=20241226_HARDENED
 RUN pip install . --break-system-packages
 
 # Copy Restricted Shell (now in src)
@@ -74,5 +75,9 @@ COPY enc-server/scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 22
+
+# Healthcheck to ensure SSHD is listening
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD nc -z 127.0.0.1 22 || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
