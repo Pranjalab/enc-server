@@ -17,6 +17,7 @@ services:
       - "2222:22"
     environment:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ENC_SESSION_TIMEOUT=${ENC_SESSION_TIMEOUT:-600}
     read_only: true
     tmpfs:
       - /tmp

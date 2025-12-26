@@ -6,13 +6,15 @@ import threading
 import time
 from pathlib import Path
 from typing import Dict, Any
+import sys
 
 class Session:
     def __init__(self):
         self.enc_root = Path.home() / ".enc"
         self.config_file = self.enc_root / "config.json"
+        self.session_dir = self.enc_root / "sessions"
         self.session_dir.mkdir(parents=True, exist_ok=True)
-        self.session_check_time = 600  # seconds (10 minutes)
+        self.session_check_time = int(os.environ.get("ENC_SESSION_TIMEOUT", 600))  # seconds
         self.mount_check_time = 3    # seconds
         self.monitoring_active = False
         self.mount_monitoring_active = False
@@ -87,8 +89,11 @@ class Session:
             
             if diff > self.session_check_time:
                 # Expired
+                print(f"DEBUG: Session expired. Diff: {diff}, Timeout: {self.session_check_time}", file=sys.stderr, flush=True)
                 self.logout_session(session_id)
                 return None
+            else:
+                pass
                 
         return data
 
@@ -183,7 +188,7 @@ class Session:
         
         def _monitor():
             while self.monitoring_active:
-                time.sleep(self.session_check_time) # Check every second
+                time.sleep(1) # Check every second
                 
                 # Check if session file exists
                 session_data = self.get_session(session_id)

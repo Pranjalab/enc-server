@@ -16,6 +16,12 @@ passwd -u admin || true
 # Start SSHD
 echo "Starting SSH Server..."
 
+# Propagate environment variables to SSH sessions (requires PermitUserEnvironment yes)
+mkdir -p /home/admin/.ssh
+echo "ENC_SESSION_TIMEOUT=${ENC_SESSION_TIMEOUT:-600}" > /home/admin/.ssh/environment
+chown -R admin:enc /home/admin/.ssh
+chmod 600 /home/admin/.ssh/environment || true
+
 # Provision host keys if missing in volume
 if [ ! -f /etc/ssh/ssh_host_keys/ssh_host_ed25519_key ]; then
     ssh-keygen -A
