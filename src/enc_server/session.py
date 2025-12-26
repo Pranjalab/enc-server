@@ -2,6 +2,8 @@ import uuid
 import datetime
 import json
 import os
+import threading
+import time
 from pathlib import Path
 from typing import Dict, Any
 
@@ -9,8 +11,11 @@ class Session:
     def __init__(self):
         self.enc_root = Path.home() / ".enc"
         self.config_file = self.enc_root / "config.json"
-        self.session_dir = self.enc_root / "sessions"
         self.session_dir.mkdir(parents=True, exist_ok=True)
+        self.session_check_time = 600  # seconds (10 minutes)
+        self.mount_check_time = 3    # seconds
+        self.monitoring_active = False
+        self.mount_monitoring_active = False
 
     def load_config(self) -> Dict[str, Any]:
         """Load configuration from config.json."""
@@ -40,6 +45,7 @@ class Session:
             "session_id": session_id,
             "username": username,
             "created_at": timestamp,
+            "updated_at": timestamp,
             "context": "enc",
             "active_project": None,
             "allowed_commands": auth_instance.get_user_permissions(username),
@@ -70,7 +76,21 @@ class Session:
             return None
         
         with open(session_file, 'r') as f:
-            return json.load(f)
+            data = json.load(f)
+            
+        # Passive Check: Expiry
+        updated_at_str = data.get("updated_at")
+        if updated_at_str:
+            updated_at = datetime.datetime.fromisoformat(updated_at_str)
+            now = datetime.datetime.now()
+            diff = (now - updated_at).total_seconds()
+            
+            if diff > self.session_check_time:
+                # Expired
+                self.logout_session(session_id)
+                return None
+                
+        return data
 
     def save_session(self, session_data):
         """Save session data to file."""
@@ -79,6 +99,15 @@ class Session:
         with open(session_file, 'w') as f:
             json.dump(session_data, f, indent=4)
         return True
+
+    def update_time(self, session_id):
+        """Update the session's updated_at timestamp."""
+        session_data = self.get_session(session_id)
+        if not session_data:
+            return False
+        
+        session_data["updated_at"] = datetime.datetime.now().isoformat()
+        return self.save_session(session_data)
 
     def update_project_info(self, session_id, project_name, mount_state=True):
         """Update project activity status in the session file."""
@@ -111,6 +140,10 @@ class Session:
 
     def logout_session(self, session_id):
         """Destroy a session."""
+        # Stop monitoring if active
+        self.stop_session_monitoring()
+        self.stop_mount_monitoring()
+
         # remove session id from config file
         config = self.load_config()
         if config.get("session_id") == session_id:
@@ -121,13 +154,14 @@ class Session:
             os.remove(session_file)
             return True
         return False
+
     def start_session_monitoring(self):
         """Start monitoring the session."""
-        self.session_monitoring = True
+        pass # Placeholder for interface compatibility if needed, but logic moved to monitor_session(id)
 
     def stop_session_monitoring(self):
         """Stop monitoring the session."""
-        self.session_monitoring = False
+        self.monitoring_active = False
 
     def check_session_id(self, session_id):
         """Check if the session ID matches the one in global config."""
@@ -140,3 +174,83 @@ class Session:
         if session_id:
             cmd_path = ctx.command_path
             self.log_command(session_id, cmd_path, result_data)
+
+    # --- New Monitoring Methods ---
+
+    def monitor_session(self, session_id, logout_callback=None):
+        """Run loop checking session inactivity."""
+        self.monitoring_active = True
+        
+        def _monitor():
+            while self.monitoring_active:
+                time.sleep(self.session_check_time) # Check every second
+                
+                # Check if session file exists
+                session_data = self.get_session(session_id)
+                if not session_data:
+                    # Session gone, stop monitoring
+                    self.monitoring_active = False
+                    return
+
+                updated_at_str = session_data.get("updated_at")
+                if not updated_at_str:
+                    continue
+                    
+                updated_at = datetime.datetime.fromisoformat(updated_at_str)
+                now = datetime.datetime.now()
+                diff = (now - updated_at).total_seconds()
+                
+                if diff > self.session_check_time:
+                    # Session expired
+                    print(f"Session {session_id} expired (inactive {diff}s). Logging out.")
+                    self.logout_session(session_id)
+                    self.monitoring_active = False
+                    self.mount_monitoring_active = False # Also stop mount monitoring
+                    return
+
+        t = threading.Thread(target=_monitor, daemon=True)
+        t.start()
+
+    def stop_mount_monitoring(self):
+        self.mount_monitoring_active = False
+
+    def monitor_mount(self, session_id, project_name):
+        """Run loop checking for file activity in project vault."""
+        self.mount_monitoring_active = True
+        # Assume standard path: ~/.enc/vault/master/<project_name>
+        # Need to verify where vault is actually located. enc.py handles it.
+        # But we can reconstruct it or pass it. 
+        # Using fixed path assumption based on current codebase knowledge:
+        project_path = self.enc_root / "vault" / "master" / project_name
+        
+        def _monitor():
+            while self.mount_monitoring_active:
+                time.sleep(self.mount_check_time)
+                
+                if not self.monitoring_active: # If session monitoring stops, this should too
+                   return
+
+                if not project_path.exists():
+                     continue
+
+                # Check for activity
+                if self._check_mount_activity(project_path):
+                    self.update_time(session_id)
+
+        t = threading.Thread(target=_monitor, daemon=True)
+        t.start()
+
+    def _check_mount_activity(self, path: Path) -> bool:
+        """Check if any file in path has been modified recently."""
+        # Check if modified within last check_time + buffer
+        threshold = datetime.datetime.now().timestamp() - self.mount_check_time - 1
+        
+        try:
+            for root, dirs, files in os.walk(path):
+                for f in files:
+                    full_path = Path(root) / f
+                    if full_path.stat().st_mtime > threshold:
+                        return True
+        except Exception as e:
+            print(f"Error checking mount activity: {e}")
+        return False

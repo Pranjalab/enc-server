@@ -90,6 +90,24 @@ All user data is stored in the persistent volume mapped to `/home`.
 
 ---
 
+## ⏱️ Session Monitoring Protocol
+
+The ENC Server implements strict session management to ensure security.
+
+### Server-Side Monitoring
+*   **Inactivity Timeout**: Sessions are automatically closed if no commands are executed for **10 minutes** (600 seconds).
+*   **Mount Activity Keep-Alive**: Active file modifications in a mounted project will refresh the session timer, keeping it alive during coding sessions.
+*   **Closure Conditions**:
+    1.  **Command Timeout**: User is idle (no CLI commands) > 10 mins.
+    2.  **Mount Timeout**: User stops editing files in a mounted project > 10 mins.
+    3.  **Explicit Logout**: User runs `enc logout`.
+
+### Client-Side Behavior
+*   The CLI (`enc-client`) validates the session ID with the server before every critical command.
+*   If the server reports the session as expired ("Please login first"), the CLI will prompt the user to re-authenticate.
+
+---
+
 ## 🚑 Troubleshooting
 
 **Log Analysis**

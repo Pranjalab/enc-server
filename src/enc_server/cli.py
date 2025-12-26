@@ -7,6 +7,7 @@ import requests
 import json
 from enc_server.enc import EncServer
 from enc_server.authentications import Authentication
+from enc_server.session import Session
 
 
 console = Console()
@@ -49,6 +50,10 @@ def check_server_permission(ctx):
              # Return JSON error for client parsing
              click.echo(json.dumps({"status": "error", "message": f"Session Verification Failed: {msg}"}))
              ctx.exit(1)
+             
+        # Update session time ONLY if valid
+        session = Session() 
+        session.update_time(session_id)
 
     # Check if user exists in policy
     if auth.get_user_role(user) is None:

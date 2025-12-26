@@ -76,7 +76,12 @@ class EncServer:
         """Create a new session ID and file for the user."""
         # Retrieve projects from user config
         projects = list(self.get_user_projects_from_config().keys())
-        return self.session.create_session(username, self.auth, projects=projects)
+        session_data = self.session.create_session(username, self.auth, projects=projects)
+        
+        # Start monitoring
+        self.session.monitor_session(session_data["session_id"])
+        
+        return session_data
 
     def get_session(self, session_id):
         """Retrieve session data."""
@@ -235,6 +240,8 @@ class EncServer:
             res = {"status": "success", "mount_point": f"/home/{user}/.enc/run/master/{project_name}"}
             if session_id:
                 self.session.update_project_info(session_id, project_name, mount_state=True)
+                # Start monitoring mount
+                self.session.monitor_mount(session_id, project_name)
         else:
             res = {"status": "error", "message": "Failed to mount project"}
             
