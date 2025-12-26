@@ -51,6 +51,7 @@ RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/
 # Force secure shell for admin
 RUN addgroup enc && \
     adduser -D -s /usr/local/bin/enc-shell -G enc admin && \
+    echo "admin:admin" | chpasswd && \
     echo "admin ALL=(root) NOPASSWD: /usr/sbin/adduser, /usr/sbin/deluser, /usr/sbin/chpasswd, /bin/mkdir, /bin/chmod, /bin/chown, /usr/bin/tee, /bin/cp, /bin/grep, /usr/bin/find" > /etc/sudoers.d/admin && \
     chmod 0440 /etc/sudoers.d/admin
 
