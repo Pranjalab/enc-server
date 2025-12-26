@@ -44,6 +44,9 @@ jobs:
           images: |
             pranjalab/enc-server
             ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
