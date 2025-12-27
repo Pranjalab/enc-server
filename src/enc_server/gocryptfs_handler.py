@@ -25,7 +25,7 @@ class GocryptfsHandler:
         
         if cipher_dir.exists():
              console.print(f"[yellow]Project {project_name} already exists.[/yellow]")
-             return False
+             return False, "Project already exists"
              
         cipher_dir.mkdir(parents=True)
         
@@ -60,7 +60,7 @@ class GocryptfsHandler:
             # cleanup vault if empty
             if cipher_dir.exists() and not any(cipher_dir.iterdir()):
                 cipher_dir.rmdir()
-            return False
+            return False, str(e)
         finally:
              if passfile_path and os.path.exists(passfile_path):
                  os.unlink(passfile_path)
@@ -78,7 +78,7 @@ class GocryptfsHandler:
         # Check if already mounted
         if os.path.ismount(mount_point):
             console.print(f"[yellow]{project_name} is already mounted.[/yellow]")
-            return True
+            return True, "Already mounted"
 
         # Use temp file for password
         import tempfile
@@ -98,11 +98,11 @@ class GocryptfsHandler:
                  raise Exception(f"Mount failed: {res.stderr}")
                  
             console.print(f"[green]Mounted {project_name} to {mount_point}[/green]")
-            return True
+            return True, "Mount success"
             
         except Exception as e:
              console.print(f"[red]Mount Error:[/red] {e}")
-             return False
+             return False, str(e)
         finally:
              if passfile_path and os.path.exists(passfile_path):
                  os.unlink(passfile_path)

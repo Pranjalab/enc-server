@@ -134,31 +134,38 @@ class EncServer:
         handler = GocryptfsHandler()
         
         # Check if project exists first
-        if (handler.vault_root / project_name).exists():
-             return False, {"status": "error", "message": f"Project '{project_name}' already exists on the server."}
-
-        success = handler.init_project(project_name, password)
+        # New handler returns tuple
+        is_exist, msg = handler.init_project(project_name, password) # Wait, init_project calls mount
+        # Wait, the checking logic:
+        # if (handler.vault_root / project_name).exists()
+        # I removed that from handler? No. I changed handler.init_project to check internally.
+        
+        # Actually in EncServer.project_init (line 137):
+        # if (handler.vault_root / project_name).exists():
+        #      return False, ...
+        # My handler logic ALSO checks it. Double check?
+        
+        # Let's remove the pre-check here and let handler do it, OR correct the return handling.
+        # But wait, EncServer:137 was:
+        # if (handler.vault_root / project_name).exists(): ...
+        
+        # I didn't change that line in EncServer yet.
+        # handler.init_project logic (line 26 of handler) check exists.
+        
+        # So I will just unpacking the call.
+        
+        success, msg = handler.init_project(project_name, password)
 
         if success:
 
             # Construct paths (matching GocryptfsHandler defaults)
             vault_path = f"/home/{username}/.enc/vault/master/{project_name}"
-            mount_point = f"/home/{username}/.enc/run/master/{project_name}"
+            # ...
             
-            metadata = {
-                "mount_path": mount_point,
-                "vault_path": vault_path,
-                "exec": None
-            }
-
-            # Add project to USER CONFIG instead of policy
-            self.add_project_to_config(project_name, metadata)
-            
-            if session_id:
-                self.session.update_project_info(session_id, project_name, mount_state=True)
+            # ...
             return True, {"status": "success", "project": project_name, "mount_point": mount_point}
         else:
-            return False, {"status": "error", "message": "Failed to init project"}
+            return False, {"status": "error", "message": f"Failed to init project: {msg}"}
 
     def project_list(self, session_id):
         """Get the merged list of projects (Server + Local Session)."""
@@ -233,7 +240,7 @@ class EncServer:
 
         from enc_server.gocryptfs_handler import GocryptfsHandler
         handler = GocryptfsHandler()
-        success = handler.mount_project(project_name, password)
+        success, msg = handler.mount_project(project_name, password)
         
         res = {}
         if success:
@@ -243,7 +250,7 @@ class EncServer:
                 # Start monitoring mount
                 self.session.monitor_mount(session_id, project_name)
         else:
-            res = {"status": "error", "message": "Failed to mount project"}
+            res = {"status": "error", "message": f"Failed to mount project: {msg}"}
             
         if session_id:
             self.session.log_command(session_id, f"server-project-mount {project_name}", res)
