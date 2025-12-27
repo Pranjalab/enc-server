@@ -10,6 +10,8 @@ services:
       - DAC_OVERRIDE # Required for root file access
     devices:
       - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
     container_name: enc_ssh_server
     restart: unless-stopped
     init: true
@@ -18,7 +20,7 @@ services:
     environment:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ENC_SESSION_TIMEOUT=${ENC_SESSION_TIMEOUT:-600}
-    read_only: true
+    # read_only: true
     tmpfs:
       - /tmp
       - /run
