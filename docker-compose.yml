@@ -26,10 +26,10 @@ services:
       - ./ssh/authorized_keys:/home/admin/.ssh/authorized_keys
       - ./ssh/host_keys:/etc/ssh/ssh_host_keys
       - enc_home:/home
-      - enc_etc:/etc
+      # - enc_etc:/etc
       - enc_root:/root
 
 volumes:
   enc_home:
-  enc_etc:
+  # enc_etc:
   enc_root:
