@@ -16,6 +16,11 @@ chown -R admin /home/admin
 # Unlock admin account (Alpine locks passwordless accounts by default)
 passwd -u admin || true
 
+# Update admin password from env var if provided
+if [ -n "$ADMIN_PASSWORD" ]; then
+    echo "admin:$ADMIN_PASSWORD" | chpasswd
+fi
+
 # Start SSHD
 echo "Starting SSH Server..."
 
