@@ -1,0 +1,12 @@
+{
+  "admin": {
+    "gdrive": {
+      "available": true,
+      "status": "mounted"
+    },
+    "local": {
+      "available": true,
+      "status": "mounted"
+    }
+  }
+}

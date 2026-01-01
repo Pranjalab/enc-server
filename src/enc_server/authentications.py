@@ -15,14 +15,14 @@ class Authentication:
     PERMISSIONS = {
         # ROLE_SUPER_ADMIN: ["*"],
         ROLE_ADMIN: [
-            "status", "server-login", "server-logout", 
+            "status", "server-login", "server-logout", "server-status",
             "user add", "user list", "user remove", 
             "init", "server-project-init", "server-project-mount", "server-project-unmount", "server-project-sync", "server-project-run",
             "show users", "server-user-create", "server-user-delete", "server-user-list",
             "server-project-list", "project list", "server-setup-ssh-key"
         ],
         ROLE_DEV: [
-            "status", "server-login", "server-logout",
+            "status", "server-login", "server-logout", "server-status",
             "init", "server-project-init", "server-project-mount", "server-project-unmount", "server-project-sync", "server-project-run",
             "server-project-list", "project list", "server-project-remove", "server-setup-ssh-key"
         ]
@@ -103,17 +103,16 @@ class Authentication:
     def is_allowed(self, username, command):
         """Check if a user is allowed to run a specific command."""
         
+        if command in self.policy.get("allow_all", []):
+            return True
+            
         # check if user in the policy
         if not self._check_user_in_policy(username):
             return False
         
         role = self.get_user_role(username)
-        
         # SUPER_ADMIN is a role defined in the policy
         if role and role == self.ROLE_SUPER_ADMIN:
-            return True
-            
-        if command in self.policy.get("allow_all", []):
             return True
             
         role_perms = self.PERMISSIONS.get(role, [])

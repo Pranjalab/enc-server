@@ -1,9 +1,17 @@
+# ==========================================
 # Stage 1: Builder
 # Pinning to specific golang version for stability and security (x/crypto requires 1.24+)
+# ==========================================
 FROM golang:1.24-alpine3.21 AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git bash openssl-dev gcc musl-dev
+RUN apk add --no-cache \
+    git \
+    bash \
+    openssl-dev \
+    gcc \
+    musl-dev \
+    shadow
 
 # Clone and build gocryptfs from source to fix x/crypto CVEs
 WORKDIR /build
@@ -12,12 +20,17 @@ RUN git clone https://github.com/rfjakob/gocryptfs.git . && \
     go get -u golang.org/x/crypto && \
     go build -tags openssl -o gocryptfs .
 
+# ==========================================
 # Stage 2: Runtime
 # Pinning to alpine 3.21 for predictable security updates
+# ==========================================
 FROM alpine:3.21
 
+LABEL maintainer="Pranjal Bhaskare"
+LABEL description="ENC Server - Secure Encrypted Storage Manager"
+
 # Install runtime dependencies
-# exclude gocryptfs package as we copy our own
+# exclude gocryptfs package as we copy our own built version
 RUN apk add --no-cache \
     openssh \
     openrc \
@@ -26,58 +39,87 @@ RUN apk add --no-cache \
     sudo \
     fuse \
     rsync \
-    openssl
+    openssl \
+    rclone \
+    bash \
+    netcat-openbsd
 
-# Copy patched gocryptfs
+# Copy patched gocryptfs from builder
 COPY --from=builder /build/gocryptfs /usr/local/bin/gocryptfs
 
-# Upgrade pip to fix CVE-2025-8869
-RUN pip install --upgrade pip --break-system-packages
+# Enable user_allow_other for nested mounts (Crucial for gocryptfs)
+RUN sed -i 's/#user_allow_other/user_allow_other/' /etc/fuse.conf
 
-# Configure SSH
+# ------------------------------------------
+# SSH Configuration & Security Hardening
+# ------------------------------------------
 RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config && \
-    sed -i 's/#StrictModes yes/StrictModes no/' /etc/ssh/sshd_config && \
+    sed -i 's/#StrictModes yes/StrictModes yes/' /etc/ssh/sshd_config && \
     sed -i 's/Subsystem.*sftp.*internal-sftp/Subsystem sftp \/usr\/lib\/ssh\/sftp-server/' /etc/ssh/sshd_config && \
-    echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config && \
-    echo "ClientAliveCountMax 3" >> /etc/ssh/sshd_config && \
-    echo "TCPKeepAlive yes" >> /etc/ssh/sshd_config && \
-    echo "PermitUserEnvironment yes" >> /etc/ssh/sshd_config && \
+    { \
+    echo "ClientAliveInterval 30"; \
+    echo "ClientAliveCountMax 3"; \
+    echo "TCPKeepAlive yes"; \
+    echo "PermitUserEnvironment yes"; \
+    echo "MaxAuthTries 6"; \
+    echo "LoginGraceTime 60"; \
+    echo "X11Forwarding no"; \
+    echo "AllowTcpForwarding yes"; \
+    } >> /etc/ssh/sshd_config && \
     mkdir -p /etc/ssh/ssh_host_keys
 
-# Create enc group and admin user
-# Force secure shell for admin
-RUN addgroup enc && \
-    adduser -D -s /usr/local/bin/enc-shell -G enc admin && \
-    echo "admin:admin" | chpasswd && \
+# ------------------------------------------
+# User & Group Configuration
+# ------------------------------------------
+# Create enc group and configure sudoers for administrative tasks
+RUN addgroup -S enc && \
     echo "admin ALL=(root) NOPASSWD: /usr/sbin/adduser, /usr/sbin/deluser, /usr/sbin/chpasswd, /bin/mkdir, /bin/chmod, /bin/chown, /usr/bin/tee, /bin/cp, /bin/grep, /usr/bin/find" > /etc/sudoers.d/admin && \
     chmod 0440 /etc/sudoers.d/admin
 
-# Install ENC tool (from server source)
+# ------------------------------------------
+# Python Application Setup
+# ------------------------------------------
 WORKDIR /app
-# Copy the current directory to /app
-COPY . /app/
-ENV BUILD_DATE=20241226_STANDALONE
-RUN pip install . --break-system-packages
 
-# Copy Restricted Shell
-COPY src/enc_server/shell.py /usr/local/bin/enc-shell
-COPY config/policy.json /etc/enc/policy.json
-RUN chmod +x /usr/local/bin/enc-shell && \
+# Upgrade pip and install dependencies first to leverage Docker layer caching
+# Note: We copy setup.py first to avoid re-installing dependencies on code changes
+COPY setup.py /app/
+RUN pip install --upgrade pip --no-cache-dir --break-system-packages && \
+    pip install . --no-cache-dir --break-system-packages || true
+
+# Copy the rest of the application source code
+COPY . /app/
+
+# Re-run pip install to ensure the package is correctly linked with the source
+RUN pip install . --no-cache-dir --break-system-packages
+
+# Set environment variables
+ENV ENC_MODE=SERVER \
+    PYTHONPATH=/app/src \
+    BUILD_DATE=20241226_STANDALONE
+
+# ------------------------------------------
+# Restricted Shell & Policy Configuration
+# ------------------------------------------
+RUN chmod +x /app/src/enc_server/shell.py && \
+    ln -sf /app/src/enc_server/shell.py /usr/local/bin/enc-shell && \
     echo "/usr/local/bin/enc-shell" >> /etc/shells && \
+    mkdir -p /etc/enc && \
+    cp /app/config/policy.json /etc/enc/policy.json && \
     chown root:enc /etc/enc/policy.json && \
     chmod 664 /etc/enc/policy.json
-ENV ENC_MODE=SERVER
 
-# Setup Entrypoint
-COPY scripts/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# ------------------------------------------
+# Entrypoint & Healthcheck
+# ------------------------------------------
+RUN chmod +x /app/scripts/entrypoint.sh && \
+    ln -sf /app/scripts/entrypoint.sh /entrypoint.sh
 
 EXPOSE 22
 
-# Healthcheck to ensure SSHD is listening
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD nc -z 127.0.0.1 22 || exit 1
 

@@ -8,6 +8,8 @@ import json
 from enc_server.enc import EncServer
 from enc_server.authentications import Authentication
 from enc_server.session import Session
+from enc_server.debug import debug_log
+from pathlib import Path
 
 
 console = Console()
@@ -40,13 +42,15 @@ def check_server_permission(ctx):
 
     user = getpass.getuser()
     cmd_path = ctx.command_path.split(" ")[-1] # get leaf command
+    debug_log(f"CLI: User '{user}' attempting command '{cmd_path}'")
     
-    # Check session for all commands except login
-    if cmd_path != "server-login":
+    # Check session for all commands except login and status
+    if cmd_path not in ["server-login", "server-status"]:
         session_id = ctx.obj.get("session_id")
         server = EncServer()
         is_valid, msg = server.verify_session(session_id)
         if not is_valid:
+             debug_log(f"CLI: Session verification failed for {user}: {msg}")
              # Return JSON error for client parsing
              click.echo(json.dumps({"status": "error", "message": f"Session Verification Failed: {msg}"}))
              ctx.exit(1)
@@ -56,14 +60,19 @@ def check_server_permission(ctx):
         session.update_time(session_id)
 
     # Check if user exists in policy
-    if auth.get_user_role(user) is None:
+    role = auth.get_user_role(user)
+    if role is None:
+         debug_log(f"CLI: Access Denied: User '{user}' role not found in policy.")
          console.print(f"[bold red]Access Denied:[/bold red] User '{user}' is not registered. Please contact your admin to add the user.")
          ctx.exit(1)
 
     if not auth.is_allowed(user, cmd_path):
+        debug_log(f"CLI: Access Denied: User '{user}' (role: {role}) not allowed to run '{cmd_path}'.")
         error_res = {"status": "error", "message": f"Access Denied: User '{user}' is not allowed to run '{cmd_path}'."}
         click.echo(json.dumps(error_res))
         ctx.exit(1)
+    
+    debug_log(f"CLI: Access Granted to {user} for {cmd_path}")
 
 def ensure_admin(ctx):
     """Explicitly check if current user is admin."""
@@ -82,27 +91,47 @@ def ensure_admin(ctx):
 
 @cli.command("server-login")
 @click.argument("username")
+@click.option("--password", default=None, help="User password for backup vault")
 @click.pass_context
-def server_login(ctx, username):
+def server_login(ctx, username, password):
     """Internal: Create a session and return JSON."""
     check_server_permission(ctx)
     from enc_server.enc import EncServer
     server = EncServer()
-    session = server.create_session(username)
+    session = server.create_session(username, password)
     # Output ONLY JSON for client parsing
     import json
     click.echo(json.dumps(session))
 
 @cli.command("server-logout")
 @click.argument("session_id")
+@click.option("--password", default=None, help="User password for backup vault")
 @click.pass_context
-def server_logout(ctx, session_id):
+def server_logout(ctx, session_id, password):
     """Internal: Destroy a session."""
     check_server_permission(ctx)
     from enc_server.enc import EncServer
     server = EncServer()
-    server.logout_session(session_id)
-    click.echo(json.dumps({"status": "logged_out"}))
+    res = server.logout_session(session_id, password)
+    click.echo(json.dumps(res))
+
+@cli.command("server-status")
+@click.argument("username")
+@click.pass_context
+def server_status(ctx, username):
+    """Internal: Get user backup status."""
+    check_server_permission(ctx)
+    status_file = Path("/app/backups/status.json")
+    if not status_file.exists():
+        click.echo(json.dumps({}))
+        return
+    
+    try:
+        with open(status_file, 'r') as f:
+            data = json.load(f)
+        click.echo(json.dumps(data.get(username, {})))
+    except Exception as e:
+        click.echo(json.dumps({"status": "error", "message": str(e)}))
 
 
 @cli.command("server-project-init")
@@ -143,12 +172,13 @@ def server_project_mount(ctx, project_name, password):
 
 @cli.command("server-project-remove")
 @click.argument("project_name")
+@click.option("--forced", is_flag=True, help="Force removal even if access check fails or unmount fails.")
 @click.pass_context
-def server_project_remove(ctx, project_name):
+def server_project_remove(ctx, project_name, forced):
     """Remove a project securely."""
     check_server_permission(ctx)
     server = EncServer()
-    success, res = server.remove_project(project_name, ctx.obj.get("session_id"))
+    success, res = server.remove_project(project_name, ctx.obj.get("session_id"), forced=forced)
     click.echo(json.dumps(res))
 
 @cli.command("server-project-list")

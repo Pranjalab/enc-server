@@ -2,22 +2,17 @@ import os
 import subprocess
 from pathlib import Path
 from rich.console import Console
+from .debug import debug_log
 
 console = Console()
 
 class GocryptfsHandler:
-    def __init__(self, enc_root=None):
-        if enc_root:
-            self.enc_root = Path(enc_root)
-        else:
-            self.enc_root = Path.home() / ".enc"
+    def __init__(self, vault_root=None, run_root=None):
+        self.vault_root = Path(vault_root) if vault_root else Path.home() / ".enc_vaults"
+        self.run_root = Path(run_root) if run_root else Path.home() / ".enc" / "projects"
             
-        self.vault_root = self.enc_root / "vault" / "master"
-        self.run_root = self.enc_root / "run" / "master"
-        
-        # Ensure roots exist
-        self.vault_root.mkdir(parents=True, exist_ok=True)
-        self.run_root.mkdir(parents=True, exist_ok=True)
+        # Note: run_root and vault_root are now inside ~/.enc mountpoint, 
+        # so we don't mkdir here to avoid blocking gocryptfs mount.
 
     def init_project(self, project_name, password):
         """Initialize a new encrypted project vault."""
@@ -41,13 +36,13 @@ class GocryptfsHandler:
             # Secure the temp file (though standard tempfile usually does proper perms, explicit is safe)
             os.chmod(passfile_path, 0o600)
 
+            # Run without piping
             cmd = ["gocryptfs", "-init", "-q", "-passfile", passfile_path, str(cipher_dir)]
-            console.print(f"Initializing vault at {cipher_dir}...")
-            
-            # Run without piping (inherit output to capture errors in logs if any)
+            debug_log(f"GocryptfsHandler: Initializing vault {cipher_dir}...")
             res = subprocess.run(cmd, capture_output=True, text=True)
             
             if res.returncode != 0:
+                debug_log(f"GocryptfsHandler: Init failed: {res.stderr}")
                 raise Exception(f"Gocryptfs init failed: {res.stderr}")
 
             console.print(f"[green]Vault initialized for {project_name}[/green]")
@@ -90,13 +85,15 @@ class GocryptfsHandler:
                 passfile_path = tf.name
             os.chmod(passfile_path, 0o600)
             
-            cmd = ["gocryptfs", "-q", "-passfile", passfile_path, str(cipher_dir), str(mount_point)]
-            
+            cmd = ["gocryptfs", "-q", "-allow_other", "-passfile", passfile_path, str(cipher_dir), str(mount_point)]
+            debug_log(f"GocryptfsHandler: Mounting {cipher_dir} to {mount_point}...")
             res = subprocess.run(cmd, capture_output=True, text=True)
 
             if res.returncode != 0:
+                 debug_log(f"GocryptfsHandler: Mount failed: {res.stderr}")
                  raise Exception(f"Mount failed: {res.stderr}")
                  
+            debug_log(f"GocryptfsHandler: Mount Success: {mount_point}")
             console.print(f"[green]Mounted {project_name} to {mount_point}[/green]")
             return True, "Mount success"
             

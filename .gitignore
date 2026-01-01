@@ -29,3 +29,4 @@ src/enc_server.egg-info/PKG-INFO
 src/enc_server.egg-info/requires.txt
 src/enc_server.egg-info/SOURCES.txt
 src/enc_server.egg-info/top_level.txt
+config/credentials.json

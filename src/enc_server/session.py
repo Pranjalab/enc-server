@@ -7,17 +7,39 @@ import time
 from pathlib import Path
 from typing import Dict, Any
 import sys
+from .debug import debug_log
 
 class Session:
-    def __init__(self):
-        self.enc_root = Path.home() / ".enc"
-        self.config_file = self.enc_root / "config.json"
-        self.session_dir = self.enc_root / "sessions"
-        self.session_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, persistent_root=None, transient_root=None):
+        # Default persistent root
+        self.persistent_root = Path(persistent_root) if persistent_root else Path.home() / ".enc" / "system"
+        
+        # Determine transient root dynamically
+        vault_root = Path.home() / ".enc"
+        if (vault_root / "system").exists():
+             self.transient_root = vault_root
+             debug_log(f"Session: Vault detected. Using {self.transient_root} as session storage.")
+        else:
+             self.transient_root = Path(transient_root) if transient_root else Path("/tmp/enc_sessions")
+             debug_log(f"Session: Vault NOT detected. Using {self.transient_root} as session storage.")
+            
+        self.config_file = self.persistent_root / "config.json"
+        self.session_dir = self.transient_root / "sessions"
+        
         self.session_check_time = int(os.environ.get("ENC_SESSION_TIMEOUT", 600))  # seconds
         self.mount_check_time = 3    # seconds
         self.monitoring_active = False
         self.mount_monitoring_active = False
+
+    def init_session_storage(self, root_path=None):
+        """Initialize session directory. root_path can be inside the mounted vault."""
+        if root_path:
+            self.transient_root = Path(root_path)
+            self.session_dir = self.transient_root / "sessions"
+        
+        debug_log(f"Session: Initializing session storage at {self.session_dir}")
+        self.session_dir.mkdir(parents=True, exist_ok=True)
+        return self.session_dir
 
     def load_config(self) -> Dict[str, Any]:
         """Load configuration from config.json."""
@@ -28,10 +50,12 @@ class Session:
                 return json.load(f)
         except json.JSONDecodeError:
             return {}
+        except Exception:
+            return {}
 
     def save_config(self, config: Dict[str, Any]):
         """Save configuration to config.json."""
-        self.enc_root.mkdir(parents=True, exist_ok=True)
+        self.persistent_root.mkdir(parents=True, exist_ok=True)
         with open(self.config_file, "w") as f:
             json.dump(config, f, indent=2)
 
@@ -162,7 +186,7 @@ class Session:
 
     def start_session_monitoring(self):
         """Start monitoring the session."""
-        pass # Placeholder for interface compatibility if needed, but logic moved to monitor_session(id)
+        pass 
 
     def stop_session_monitoring(self):
         """Stop monitoring the session."""
@@ -180,7 +204,7 @@ class Session:
             cmd_path = ctx.command_path
             self.log_command(session_id, cmd_path, result_data)
 
-    # --- New Monitoring Methods ---
+    # --- Monitoring Methods ---
 
     def monitor_session(self, session_id, logout_callback=None):
         """Run loop checking session inactivity."""
@@ -219,14 +243,16 @@ class Session:
     def stop_mount_monitoring(self):
         self.mount_monitoring_active = False
 
-    def monitor_mount(self, session_id, project_name):
+    def monitor_mount(self, session_id, project_name, project_path=None):
         """Run loop checking for file activity in project vault."""
         self.mount_monitoring_active = True
-        # Assume standard path: ~/.enc/vault/master/<project_name>
-        # Need to verify where vault is actually located. enc.py handles it.
-        # But we can reconstruct it or pass it. 
-        # Using fixed path assumption based on current codebase knowledge:
-        project_path = self.enc_root / "vault" / "master" / project_name
+        
+        # If path not provided, use legacy default (not recommended for new deployments)
+        if not project_path:
+            project_path = self.persistent_root / "vault" / "master" / project_name
+        
+        # Ensure it's a Path object
+        project_path = Path(project_path)
         
         def _monitor():
             while self.mount_monitoring_active:

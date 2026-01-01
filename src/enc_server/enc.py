@@ -7,41 +7,55 @@ from pathlib import Path
 from rich.console import Console
 from enc_server.authentications import Authentication
 from enc_server.session import Session
+from enc_server.backup_manager import BackupManager
+from enc_server.debug import debug_log
 
 console = Console()
 
 class EncServer:
     def __init__(self):
-        self.enc_root = Path.home() / ".enc"
-        self.config_file = self.enc_root / "config.json"
-        self.session_dir = self.enc_root / "sessions"
-        self.vault_dir = self.enc_root / "vault"
-        self.run_dir = self.enc_root / "run"
+        # Persistent config (inside ~/.enc to ensure backup)
+        self.enc_system = Path.home() / ".enc" / "system"
+        self.config_file = self.enc_system / "config.json"
         
-        # Ensure directories exist
-        for d in [self.session_dir, self.vault_dir, self.run_dir]:
-            d.mkdir(parents=True, exist_ok=True)
+        # Projects and sessions will be initialized inside ~/.enc after mount
+        
+        # Project-related roots (inside ~/.enc to ensure backup)
+        self.vault_root = Path.home() / ".enc" / "vaults"
+        self.run_root = Path.home() / ".enc" / "projects"
+        
+        # Note: session_dir will be initialized inside the mounted vault later
+        # Note: self.run_root will be created inside the mounted vault later
             
         self.auth = Authentication()
         self.session = Session()
             
     def load_config(self):
         """Load the user's local server-side config."""
+        debug_log(f"EncServer: Loading config from {self.config_file}")
         if not self.config_file.exists():
+            debug_log(f"EncServer: Config file does not exist.")
             return {}
         try:
              with open(self.config_file, 'r') as f:
-                 return json.load(f)
+                 cfg = json.load(f)
+                 debug_log(f"EncServer: Config loaded. Projects found: {list(cfg.get('projects', {}).keys())}")
+                 return cfg
         except Exception as e:
+             debug_log(f"EncServer: Failed to load user config: {e}")
              console.print(f"[yellow]Warning: Failed to load user config: {e}[/yellow]")
              return {}
 
     def save_user_config(self, config):
         """Save the user's local server-side config."""
+        debug_log(f"EncServer: Saving config to {self.config_file}")
         try:
+            self.enc_system.mkdir(parents=True, exist_ok=True)
             with open(self.config_file, 'w') as f:
                 json.dump(config, f, indent=4)
+            debug_log(f"EncServer: Config saved successfully. Size: {os.path.getsize(self.config_file)} bytes")
         except Exception as e:
+            debug_log(f"EncServer: Error saving config: {e}")
             console.print(f"[red]Error saving config: {e}[/red]")
 
     def add_project_to_config(self, project_name, metadata):
@@ -72,16 +86,37 @@ class EncServer:
         config = self.load_config()
         return project_name in config.get("projects", {})
 
-    def create_session(self, username):
+    def create_session(self, username, password=None):
         """Create a new session ID and file for the user."""
-        # Retrieve projects from user config
-        projects = list(self.get_user_projects_from_config().keys())
-        session_data = self.session.create_session(username, self.auth, projects=projects)
+        debug_log(f"EncServer: Creating session for {username}...")
         
-        # Start monitoring
-        self.session.monitor_session(session_data["session_id"])
-        
-        return session_data
+        try:
+            # 1. Restore Backup (if configured)
+            backup_mgr = BackupManager(username)
+            restore_res = backup_mgr.perform_restore_and_mount(password)
+
+            # 2. Initialize Session Storage (inside ~/.enc if mounted)
+            vault_path = Path.home() / ".enc"
+            if not vault_path.exists():
+                 debug_log("EncServer: Vault path ~/.enc does not exist. Using fallback.")
+                 vault_path = Path("/tmp/enc_cache")
+            
+            self.session.init_session_storage(vault_path)
+
+            # 3. Retrieve projects from user config (now available after mount)
+            projects = list(self.get_user_projects_from_config().keys())
+            debug_log(f"EncServer: Found projects: {projects}")
+            
+            session_data = self.session.create_session(username, self.auth, projects=projects)
+            session_data["restore_status"] = restore_res
+            debug_log(f"EncServer: Session created: {session_data['session_id']}")
+            
+            # Start monitoring
+            self.session.monitor_session(session_data["session_id"])
+            return session_data
+        except Exception as e:
+            debug_log(f"EncServer: Session creation failed: {e}")
+            return {"status": "error", "message": str(e)}
 
     def get_session(self, session_id):
         """Retrieve session data."""
@@ -105,21 +140,63 @@ class EncServer:
         """Log a command and its output to the session file."""
         return self.session.log_command(session_id, command, output)
 
-    def logout_session(self, session_id):
+    def logout_session(self, session_id, password=None):
         """Destroy a session."""
-        # Unmount all projects
-        self.unmount_all(session_id)
-        return self.session.logout_session(session_id)
+        debug_log(f"EncServer: Logging out session {session_id}...")
+        
+        # Get user before destroying session
+        session_data = self.session.get_session(session_id)
+        if session_data:
+            # 1. Unmount all projects FIRST (since they are inside ~/.enc)
+            debug_log(f"EncServer: Unmounting projects for {session_data.get('username')}...")
+            self.unmount_all(session_id)
+            
+            username = session_data.get("username")
+            
+            # 2. Clear session file while vault is still mounted
+            debug_log(f"EncServer: Clearing session file...")
+            res = self.session.logout_session(session_id)
+            
+            if username:
+                # 3. Backup and Unmount user vault (~/.enc)
+                debug_log(f"EncServer: Initiating backup and unmount for {username}...")
+                backup_mgr = BackupManager(username)
+                backup_res = backup_mgr.perform_backup_and_unmount(password)
+                
+                # Combine session logout status with backup status
+                final_res = {"status": "success"}
+                if isinstance(res, dict):
+                    final_res.update(res)
+                final_res["backup_status"] = backup_res
+                return final_res
+            return res
+        
+        debug_log(f"EncServer: Session {session_id} not found during logout.")
+        return False
 
     def unmount_all(self, session_id):
-        """Unmount all active projects in the session."""
+        """Unmount all active projects in the session and any other projects found mounted."""
         session_data = self.session.get_session(session_id)
-        if not session_data:
-            return
-            
-        active_projects = session_data.get("active_projects", [])
+        active_projects = session_data.get("active_projects", []) if session_data else []
+        
+        # 1. Unmount session-tracked projects
         for project_name in list(active_projects):
             self.project_unmount(project_name, session_id)
+            
+        # 2. Aggressive Cleanup: Check for any other mounts in run_root
+        if self.run_root.exists():
+            try:
+                # List all directories in projects dir
+                for item in self.run_root.iterdir():
+                    if item.is_dir() and os.path.ismount(str(item)):
+                        console.print(f"[yellow]Found stray mount at {item}. Unmounting...[/yellow]")
+                        subprocess.run(["fusermount", "-u", str(item)], check=False)
+                        try:
+                            item.rmdir()
+                        except:
+                            pass
+            except Exception as e:
+                console.print(f"[yellow]Cleanup warning: {e}[/yellow]")
 
     def project_init(self, project_name, password, session_id, project_dir):
         """Initialize encrypted project vault and manage session/access."""
@@ -131,40 +208,27 @@ class EncServer:
         username = session_data.get("username")
 
         from enc_server.gocryptfs_handler import GocryptfsHandler
-        handler = GocryptfsHandler()
+        handler = GocryptfsHandler(vault_root=self.vault_root, run_root=self.run_root)
         
-        # Check if project exists first
-        # New handler returns tuple
-        is_exist, msg = handler.init_project(project_name, password) # Wait, init_project calls mount
-        # Wait, the checking logic:
-        # if (handler.vault_root / project_name).exists()
-        # I removed that from handler? No. I changed handler.init_project to check internally.
-        
-        # Actually in EncServer.project_init (line 137):
-        # if (handler.vault_root / project_name).exists():
-        #      return False, ...
-        # My handler logic ALSO checks it. Double check?
-        
-        # Let's remove the pre-check here and let handler do it, OR correct the return handling.
-        # But wait, EncServer:137 was:
-        # if (handler.vault_root / project_name).exists(): ...
-        
-        # I didn't change that line in EncServer yet.
-        # handler.init_project logic (line 26 of handler) check exists.
-        
-        # So I will just unpacking the call.
-        
+        # Initialize project (handler internally checks if it exists)
         success, msg = handler.init_project(project_name, password)
 
         if success:
 
             # Construct paths (matching GocryptfsHandler defaults)
-            vault_path = f"/home/{username}/.enc/vault/master/{project_name}"
-            # ...
+            vault_path = str(self.vault_root / project_name)
+            mount_point = str(self.run_root / project_name)
             
-            # ...
+            self.add_project_to_config(project_name, {
+                "vault_path": vault_path,
+                "mount_path": mount_point,
+                "created_at": str(datetime.datetime.now())
+            })
+            
             return True, {"status": "success", "project": project_name, "mount_point": mount_point}
         else:
+            # Robust Cleanup: If init failed, ensure no zombie directories are left
+            self.remove_project(project_name, forced=True)
             return False, {"status": "error", "message": f"Failed to init project: {msg}"}
 
     def project_list(self, session_id):
@@ -186,46 +250,59 @@ class EncServer:
         
         return True, {"status": "success", "projects": filtered_projects}
 
-    def remove_project(self, project_name, session_id=None):
+    def remove_project(self, project_name, session_id=None, forced=False):
         """Permanently remove a project and its vault."""
         import getpass
         import shutil
         user = getpass.getuser()
         
-        # 1. Access Check (Local Config)
-        if not self.has_project_access(project_name):
-             return False, {"status": "error", "message": "Access Denied: You do not have access to this project."}
+        # 1. Access Check (Skipped if forced)
+        if not forced:
+            if not self.has_project_access(project_name):
+                 return False, {"status": "error", "message": "Access Denied: You do not have access to this project."}
 
         # 2. Unmount First (Safety)
-        # Attempt unmount, but ignore errors if not mounted
-        self.project_unmount(project_name, session_id)
+        # Attempt unmount, but ignore errors if not mounted or if it fails
+        try:
+            self.project_unmount(project_name, session_id)
+        except Exception:
+            pass
         
         from enc_server.gocryptfs_handler import GocryptfsHandler
-        handler = GocryptfsHandler()
+        handler = GocryptfsHandler(vault_root=self.vault_root, run_root=self.run_root)
         
-        # 3. Path Calculation (Should match init logic)
+        # 3. Path Calculation
         vault_path = handler.vault_root / project_name
+        mount_path = handler.run_root / project_name
         
         # 4. Secure Deletion
         try:
+            # Delete vault (ciphertext)
             if vault_path.exists():
                 shutil.rmtree(vault_path)
-            else:
-                # If vault doesn't exist, we still proceed to clean up metadata
-                # but might want to warn
-                pass 
+            
+            # Delete mount point (plaintext dir) if it exists and is empty
+            if mount_path.exists():
+                try:
+                    # If it's a mount point, we should have unmounted it.
+                    # If it's a zombie mount, rmtree might fail.
+                    shutil.rmtree(mount_path)
+                except Exception:
+                    pass
         except Exception as e:
-            return False, {"status": "error", "message": f"Failed to delete vault: {e}"}
+            if not forced:
+                return False, {"status": "error", "message": f"Failed to delete vault: {e}"}
 
         # 5. Metadata Cleanup (User Config)
         self.remove_project_from_config(project_name)
         
         # 6. Session Cleanup
         if session_id:
-            self.session.update_project_info(session_id, project_name, mount_state=False) 
-            # Force remove from active projects if present (handled by unmount, but ensuring)
-            
-            self.session.log_command(session_id, f"server-project-remove {project_name}", {"status": "success"})
+            try:
+                self.session.update_project_info(session_id, project_name, mount_state=False) 
+                self.session.log_command(session_id, f"server-project-remove {project_name} (forced={forced})", {"status": "success"})
+            except Exception:
+                pass
 
         return True, {"status": "success", "message": f"Project '{project_name}' removed."}
 
@@ -239,16 +316,17 @@ class EncServer:
             return False, {"status": "error", "message": "Access Denied: You do not have access to this project."}
 
         from enc_server.gocryptfs_handler import GocryptfsHandler
-        handler = GocryptfsHandler()
+        handler = GocryptfsHandler(vault_root=self.vault_root, run_root=self.run_root)
         success, msg = handler.mount_project(project_name, password)
         
         res = {}
         if success:
-            res = {"status": "success", "mount_point": f"/home/{user}/.enc/run/master/{project_name}"}
+            res = {"status": "success", "mount_point": str(self.run_root / project_name)}
             if session_id:
                 self.session.update_project_info(session_id, project_name, mount_state=True)
-                # Start monitoring mount
-                self.session.monitor_mount(session_id, project_name)
+                # Start monitoring mount (monitoring the ciphertext directory for activity)
+                vault_path = self.vault_root / project_name
+                self.session.monitor_mount(session_id, project_name, project_path=vault_path)
         else:
             res = {"status": "error", "message": f"Failed to mount project: {msg}"}
             
@@ -267,7 +345,7 @@ class EncServer:
             return False, {"status": "error", "message": "Access Denied: You do not have access to this project."}
 
         from enc_server.gocryptfs_handler import GocryptfsHandler
-        handler = GocryptfsHandler()
+        handler = GocryptfsHandler(vault_root=self.vault_root, run_root=self.run_root)
         handler.unmount_project(project_name)
         res = {"status": "success"}
         
@@ -286,7 +364,7 @@ class EncServer:
         if not self.has_project_access(project_name):
             return False, json.dumps({"status": "error", "message": "Access Denied"})
 
-        work_dir = os.path.expanduser(f"~/.enc/run/master/{project_name}")
+        work_dir = str(self.run_root / project_name)
         try:
             # Run and capture for logging
             proc = subprocess.run(cmd_str, shell=True, cwd=work_dir, capture_output=True, text=True)
@@ -477,7 +555,7 @@ class EncServer:
         try:
              # Check if mounted by trying to unmount or check mount result
              from enc_server.gocryptfs_handler import GocryptfsHandler
-             handler = GocryptfsHandler()
+             handler = GocryptfsHandler(vault_root=self.vault_root, run_root=self.run_root)
              # We blindly attempt unmount; if not mounted it fails gracefully or we ignore
              handler.unmount_project(project_name)
         except Exception:
@@ -485,8 +563,8 @@ class EncServer:
 
         # 4. Remove Files
         try:
-            vault_path = os.path.expanduser(f"~/.enc/vault/master/{project_name}")
-            run_path = os.path.expanduser(f"~/.enc/run/master/{project_name}")
+            vault_path = self.vault_root / project_name
+            run_path = self.run_root / project_name
             
             if os.path.exists(vault_path):
                 shutil.rmtree(vault_path)

@@ -29,9 +29,11 @@ class EncRestrictedShell(cmd.Cmd):
             args = shlex.split(command_line)
             
             # Execute without shell=True to prevent injections
-            subprocess.run(args, check=False)
+            res = subprocess.run(args, check=False)
+            return res.returncode
         except Exception as e:
             print(f"Error executing command: {e}")
+            return 1
 
     def do_clear(self, arg):
         """Clear the screen."""
@@ -80,8 +82,8 @@ if __name__ == '__main__':
             if cmd_line.startswith("enc ") or cmd_line == "enc":
                 shell = EncRestrictedShell()
                 arg = cmd_line[4:].strip()
-                if arg:
-                    shell.do_enc(arg)
+                rc = shell.do_enc(arg)
+                sys.exit(rc if rc is not None else 0)
             elif "sftp-server" in cmd_line:
                 # Use os.execv to REPLACE the current shell process with sftp-server.
                 # This ensures sftp-server has direct control of stdin/stdout/pipes.

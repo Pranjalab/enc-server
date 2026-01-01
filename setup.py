@@ -11,6 +11,8 @@ setup(
         "rich>=10.0",
         "cryptography>=3.0",
         "requests>=2.0",
+        "PyYAML>=6.0",
+        "argon2-cffi>=21.0",
     ],
     entry_points={
         "console_scripts": [

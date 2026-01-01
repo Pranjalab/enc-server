@@ -1,37 +1,61 @@
 services:
   ssh-server:
+    build: .
     image: pranjalab/enc-server:latest
-    cap_add:
-      - SYS_ADMIN # Required for FUSE
-      - MKNOD # Required for creating /dev/fuse
-      - CHOWN # Required for user mgmt
-      - SETGID # Required for user mgmt
-      - SETUID # Required for user mgmt
-      - DAC_OVERRIDE # Required for root file access
-    devices:
-      - /dev/fuse:/dev/fuse
-    security_opt:
-      - apparmor:unconfined
     container_name: enc_ssh_server
     restart: unless-stopped
-    init: true
+    init: true # Recommended for signal forwarding and zombie process reaping
+
+    # ---------------------------------------------------------
+    # Security Configuration
+    # ---------------------------------------------------------
+    # Note: These elevated privileges are required for FUSE mounts (gocryptfs)
+    # and managing Linux users dynamically within the container.
+    cap_add:
+      - SYS_ADMIN # Required for FUSE (mounting/unmounting)
+      - MKNOD # Required for creating /dev/fuse if missing
+      - CHOWN # Required for user personal directory management
+      - SETGID # Required for creating new system users/groups
+      - SETUID # Required for creating new system users/groups
+      - DAC_OVERRIDE # Required for cross-user file access during management
+
+    devices:
+      - /dev/fuse:/dev/fuse
+
+    security_opt:
+      - apparmor:unconfined # Necessary for FUSE functionality in some environments
+
+    # ---------------------------------------------------------
+    # Network Configuration
+    # ---------------------------------------------------------
     ports:
-      - "2222:22"
+      - "2222:22" # Map internal SSH port (22) to host port 2222
+
+    # ---------------------------------------------------------
+    # Environment & Storage
+    # ---------------------------------------------------------
     environment:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ENC_SESSION_TIMEOUT=${ENC_SESSION_TIMEOUT:-600}
-    # read_only: true
+      - PYTHONPATH=/app/src
+
     tmpfs:
       - /tmp
       - /run
+
     volumes:
-      - ./ssh/authorized_keys:/home/admin/.ssh/authorized_keys
+      # Host key persistence across restarts
       - ./ssh/host_keys:/etc/ssh/ssh_host_keys
-      - enc_home:/home
-      # - enc_etc:/etc
-      - enc_root:/root
+
+      # Development mounts (consider removing for production)
+      - ./src/enc_server:/app/src/enc_server
+      - ./config:/app/config
+
+      # Persistence layers
+      - ./backups:/app/backups # Encrypted user backups
+      - enc_home:/home # User home directories and project mounts
+      - enc_root:/root # Root user persistence
 
 volumes:
   enc_home:
-  # enc_etc:
   enc_root:

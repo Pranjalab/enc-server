@@ -1,7 +1,8 @@
 {
     "allow_all": [
         "status",
-        "logout"
+        "logout",
+        "server-status"
     ],
     "users": {
         "admin": {

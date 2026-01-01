@@ -1,0 +1,19 @@
+# User configuration for pre-initializing users during server setup
+# Each entry will trigger a password prompt during the first run
+
+admin:
+  url: http://localhost:2222
+  ssh_key: "./enc_ssh_key"
+  backup:
+    local:
+      path: "/app/backups"
+    gdrive:
+      FOLDER_ID: '1HrGWeRDgVlCfQkweMndpI03XstvbTNTO'
+      credentials: '/app/config/credentials.json'
+
+# Example for a regular user
+# dev_user:
+#   url: http://dombivli.vpn:2222
+#   backup:
+#     local:
+#       path: "./backups/dev_user"
